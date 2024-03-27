@@ -1,3 +1,22 @@
+# to retrieve the availability zones
+data "aws_availability_zones" "available" {}
+
+locals {
+  # newbits is the new mask for the subnet, which means it will divide the VPC into 256 (2^(32-24)) subnets.
+  newbits = var.subnet_addbits
+
+  # netcount is the number of subnets that we need, which is 6 in this case
+  netcount = 6
+
+  # cidrsubnet function is used to divide the VPC CIDR block into multiple subnets
+  all_subnets = [for i in range(local.netcount) : cidrsubnet(var.vpc_cidr, local.newbits, i)]
+
+  # we create 3 public subnets and 3 private subnets using these subnet CIDRs
+  public_subnets  = slice(local.all_subnets, 0, 3)
+  private_subnets = slice(local.all_subnets, 3, 6)
+}
+
+
 module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"
   version = "5.7.0"
@@ -5,10 +24,12 @@ module "vpc" {
   name = var.cluster_name
 
   cidr = var.vpc_cidr
-  azs  = ["${var.region}a", "${var.region}b", "${var.region}c"]
+  # availability zones
+  azs = slice(data.aws_availability_zones.available.names, 0, 3)
 
-  private_subnets = slice(cidrsubnets(var.vpc_cidr, var.subnet_addbits, var.subnet_addbits, var.subnet_addbits, var.subnet_addbits, var.subnet_addbits, var.subnet_addbits), 0, 3)
-  public_subnets  = slice(cidrsubnets(var.vpc_cidr, var.subnet_addbits, var.subnet_addbits, var.subnet_addbits, var.subnet_addbits, var.subnet_addbits, var.subnet_addbits), 3, 6)
+  # public and private subnets
+  private_subnets = local.private_subnets
+  public_subnets  = local.public_subnets
 
   enable_nat_gateway   = true
   single_nat_gateway   = true
