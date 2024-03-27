@@ -28,7 +28,7 @@ variable "vpc_cidr" {
 variable "subnet_addbits" {
   description = "The number of additional bits to add to the VPC CIDR to create subnets"
   type        = number
-  default     = 4
+  default     = 24
 }
 
 variable "eks_add_on_repo" {
