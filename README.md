@@ -7,3 +7,4 @@ Terraform configuration files to provision an EKS cluster on AWS.
 * [AWS EKS Cluster with Terraform](https://codingpackets.com/blog/aws-eks-cluster-with-terraform/)
 * [Dynamic Database Storage with the Amazon EBS CSI Driver for Amazon EKS](https://community.aws/tutorials/navigating-amazon-eks/eks-dynamic-db-storage-ebs-csi)
 * [StatefulSet with EBS Volume](https://www.eksworkshop.com/docs/fundamentals/storage/ebs/statefulset-with-ebs)
+* [EBS-Kubernetes-SampleApp-Terraform](https://github.com/stacksimplify/terraform-on-aws-eks/tree/main/16-EBS-Kubernetes-SampleApp-Terraform)
