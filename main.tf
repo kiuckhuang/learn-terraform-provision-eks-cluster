@@ -19,7 +19,7 @@ locals {
 
 module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"
-  version = "5.7.0"
+    version = "~> 5.0"
 
   name = var.cluster_name
 
@@ -35,6 +35,13 @@ module "vpc" {
   single_nat_gateway   = true
   enable_dns_hostnames = true
 
+  manage_default_network_acl    = true
+  default_network_acl_tags      = { Name = "${var.cluster_name}-default" }
+  manage_default_route_table    = true
+  default_route_table_tags      = { Name = "${var.cluster_name}-default" }
+  manage_default_security_group = true
+  default_security_group_tags   = { Name = "${var.cluster_name}-default" }
+
   public_subnet_tags = {
     "kubernetes.io/cluster/${var.cluster_name}" = "shared"
     "kubernetes.io/role/elb"                    = 1
@@ -48,7 +55,7 @@ module "vpc" {
 
 module "eks" {
   source  = "terraform-aws-modules/eks/aws"
-  version = "20.8.2"
+  version = "~> 20.0"
 
   cluster_name    = var.cluster_name
   cluster_version = var.cluster_version
@@ -57,136 +64,155 @@ module "eks" {
   subnet_ids                     = module.vpc.private_subnets
   cluster_endpoint_public_access = true
 
-  eks_managed_node_group_defaults = {
-    ami_type = var.eks_ami_type
+  cluster_addons = {
+    coredns = {
+      most_recent = true
+    }
+    kube-proxy = {
+      most_recent = true
+    }
+    vpc-cni = {
+      most_recent = true
+    }
+    aws-ebs-csi-driver = {
+      most_recent = true
+    }
+  }
 
+  eks_managed_node_group_defaults = {
+    # These are default values used by multiple nodegroup.
+    ami_type = var.eks_ami_type
+    instance_types = [var.eks_ami_variant]
+
+    min_size     = var.eks_node_group.min_size
+    max_size     = var.eks_node_group.max_size
+    desired_size = var.eks_node_group.desired_size
+    # Needed by the aws-ebs-csi-driver
+    iam_role_additional_policies = {
+      policies = "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy" #IAM rights needed by CSI driver
+    }
   }
 
   eks_managed_node_groups = {
-    one = {
+    gp_one = {
       name = "node-group-1"
-
-      instance_types = [var.eks_ami_variant]
-
-      min_size     = var.eks_node_group.min_size
-      max_size     = var.eks_node_group.max_size
-      desired_size = var.eks_node_group.desired_size
     }
-
-    two = {
+    gp_two = {
       name = "node-group-2"
-
-      instance_types = [var.eks_ami_variant]
-
-      min_size     = var.eks_node_group.min_size
-      max_size     = var.eks_node_group.max_size
-      desired_size = var.eks_node_group.desired_size
+    }
+    gp_three = {
+      name = "node-group-3"
     }
   }
 }
 
-data "aws_iam_policy" "ebs_csi_policy" {
-  arn = "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
-}
+# data "aws_iam_policy" "ebs_csi_policy" {
+#   arn = "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
+# }
 
-module "irsa_ebs_csi" {
-  source  = "terraform-aws-modules/iam/aws//modules/iam-assumable-role-with-oidc"
-  version = "5.37.0"
+# module "irsa_ebs_csi" {
+#   source  = "terraform-aws-modules/iam/aws//modules/iam-assumable-role-with-oidc"
+#   version = "~> 5.0"
 
-  create_role                   = true
-  role_name                     = "AmazonEKSTFEBSCSIRole-${module.eks.cluster_name}"
-  provider_url                  = module.eks.oidc_provider
-  role_policy_arns              = [data.aws_iam_policy.ebs_csi_policy.arn]
-  oidc_fully_qualified_subjects = ["system:serviceaccount:kube-system:ebs-csi-controller-sa"]
-}
+#   create_role                   = true
+#   role_name                     = "AmazonEKSTFEBSCSIRole-${module.eks.cluster_name}"
+#   provider_url                  = module.eks.oidc_provider
+#   role_policy_arns              = [data.aws_iam_policy.ebs_csi_policy.arn]
+#   oidc_fully_qualified_subjects = ["system:serviceaccount:kube-system:ebs-csi-controller-sa"]
+# }
 
-resource "aws_eks_addon" "ebs_csi" {
-  cluster_name             = module.eks.cluster_name
-  addon_name               = "aws-ebs-csi-driver"
-  addon_version            = "v1.29.1-eksbuild.1"
-  service_account_role_arn = module.irsa_ebs_csi.iam_role_arn
-  tags = {
-    "eks_addon" = "ebs-csi"
-    "terraform" = "true"
-  }
-}
+# resource "aws_eks_addon" "ebs_csi" {
+#   cluster_name             = module.eks.cluster_name
+#   addon_name               = "aws-ebs-csi-driver"
+#   addon_version            = "v1.29.1-eksbuild.1"
+#   service_account_role_arn = module.irsa_ebs_csi.iam_role_arn
+#   tags = {
+#     "eks_addon" = "ebs-csi"
+#     "terraform" = "true"
+#   }
+# }
 
-resource "kubernetes_service_account" "service_account" {
-  metadata {
-    name      = "aws-load-balancer-controller"
-    namespace = "kube-system"
-    labels = {
-      "app.kubernetes.io/name"      = "aws-load-balancer-controller"
-      "app.kubernetes.io/component" = "controller"
-    }
-    annotations = {
-      "eks.amazonaws.com/role-arn"               = module.irsa_ebs_csi.iam_role_arn
-      "eks.amazonaws.com/sts-regional-endpoints" = "true"
-    }
-  }
-}
+# resource "kubernetes_service_account" "service_account" {
+#   metadata {
+#     name      = "aws-load-balancer-controller"
+#     namespace = "kube-system"
+#     labels = {
+#       "app.kubernetes.io/name"      = "aws-load-balancer-controller"
+#       "app.kubernetes.io/component" = "controller"
+#     }
+#     annotations = {
+#       "eks.amazonaws.com/role-arn"               = module.irsa_ebs_csi.iam_role_arn
+#       "eks.amazonaws.com/sts-regional-endpoints" = "true"
+#     }
+#   }
+# }
 
-resource "helm_release" "alb_controller" {
-  name       = "aws-load-balancer-controller"
-  repository = "https://aws.github.io/eks-charts"
-  chart      = "aws-load-balancer-controller"
-  namespace  = "kube-system"
-  depends_on = [
-    kubernetes_service_account.service_account
-  ]
+# resource "helm_release" "alb_controller" {
+#   name       = "aws-load-balancer-controller"
+#   repository = "https://aws.github.io/eks-charts"
+#   chart      = "aws-load-balancer-controller"
+#   namespace  = "kube-system"
+#   depends_on = [
+#     kubernetes_service_account.service_account
+#   ]
 
-  set {
-    name  = "region"
-    value = var.region
-  }
+#   set {
+#     name  = "region"
+#     value = var.region
+#   }
 
-  set {
-    name  = "vpcId"
-    value = module.vpc.vpc_id
-  }
+#   set {
+#     name  = "vpcId"
+#     value = module.vpc.vpc_id
+#   }
 
-  set {
-    name  = "image.repository"
-    value = "${var.eks_add_on_repo}.dkr.ecr.${var.region}.amazonaws.com/amazon/aws-load-balancer-controller"
-  }
+#   set {
+#     name  = "image.repository"
+#     value = "${var.eks_add_on_repo}.dkr.ecr.${var.region}.amazonaws.com/amazon/aws-load-balancer-controller"
+#   }
 
-  set {
-    name  = "serviceAccount.create"
-    value = "false"
-  }
+#   set {
+#     name  = "serviceAccount.create"
+#     value = "false"
+#   }
 
-  set {
-    name  = "serviceAccount.name"
-    value = "aws-load-balancer-controller"
-  }
+#   set {
+#     name  = "serviceAccount.name"
+#     value = "aws-load-balancer-controller"
+#   }
 
-  set {
-    name  = "clusterName"
-    value = var.cluster_name
-  }
-}
+#   set {
+#     name  = "clusterName"
+#     value = var.cluster_name
+#   }
+# }
 
-resource "kubernetes_namespace" "test_app" {
-  metadata {
-    name = var.app_namespace
-  }
-}
+# resource "kubernetes_namespace" "test_app" {
+#   metadata {
+#     name = var.app_namespace
+#   }
+# }
 
-resource "helm_release" "test_app" {
-  name       = var.app_name
-  repository = "https://charts.bitnami.com/bitnami"
-  chart      = "nginx"
-  namespace  = var.app_namespace
+# resource "helm_release" "test_app" {
+#   name       = var.app_name
+#   repository = "https://charts.bitnami.com/bitnami"
+#   chart      = "nginx"
+#   namespace  = var.app_namespace
 
-  values = [
-    file("${path.module}/nginx-variables.yaml")
-  ]
-}
+#   set {
+#     name  = "persistence.size"
+#     value = "10Gi"
+#   }
 
-data "kubernetes_service" "test_app" {
-  depends_on = [helm_release.test_app]
-  metadata {
-    name      = var.app_name
-    namespace = var.app_namespace
-  }
-}
+#   values = [
+#     file("${path.module}/nginx-variables.yaml")
+#   ]
+# }
+
+# data "kubernetes_service" "test_app" {
+#   depends_on = [helm_release.test_app]
+#   metadata {
+#     name      = var.app_name
+#     namespace = var.app_namespace
+#   }
+# }

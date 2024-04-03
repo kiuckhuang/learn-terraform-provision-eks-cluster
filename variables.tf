@@ -46,7 +46,7 @@ variable "eks_ami_type" {
 variable "eks_ami_variant" {
   description = "The AMI variant for the node group"
   type        = string
-  default     = "t3.small"
+  default     = "t3.medium"
 }
 
 variable "eks_node_group" {

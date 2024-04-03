@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql-db
+  namespace: mysql
+spec:
+  serviceName: mysql-svc
+  replicas: 3
+  selector:
+    matchLabels:
+      app: mysql-db
+  template:
+    metadata:
+      labels:
+        app: mysql-db
+    spec:
+      containers:
+      - name: mysql-db
+        image: mysql:latest
+        ports:
+          - containerPort: 3306
+        volumeMounts:
+          - name: statefulset-storage
+            mountPath: /var/lib/mysql
+        env:
+          - name: MYSQL_ROOT_PASSWORD
+            value: "just4_DBA" #This is not recommend, use secrets!
+          - name: MYSQL_USER
+            value: "user" #This is not recommend, use secrets!
+          - name: MYSQL_PASSWORD
+            value: "Pass4dbuser" #This is not recommend, use secrets!
+  volumeClaimTemplates:
+  - metadata:
+      name: statefulset-storage
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: "gp2"
+      resources:
+        requests:
+          storage: 10Gi
+
